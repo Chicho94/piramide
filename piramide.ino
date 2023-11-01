@@ -11,7 +11,6 @@ const int LedStartGame = 6;
 const int btnTimer = 2;
 volatile int BtnEstado = HIGH;  // Estado del botón de inicio
 int isGameInit = 0;             // Variable para indicar si el juego ha iniciado
-int isGameFinish = 0;           // Variable para indicar si el juego ha finalizado
 
 // REPRODUCTOR DE AUDIO
 SoftwareSerial DFPlayerSerial(10, 11);
@@ -20,12 +19,12 @@ DFRobotDFPlayerMini myDFPlayer;
 // SENSOR HALL
 const int HallSensorPin = 8;
 volatile int EstadoSensorHall = HIGH;  // Estado del sensor Hall
+int currentEstadoSensorHall = 0;       // Estado actual del sensor
 int isHallSensorActive = 0;            // Variable para indicar si el sensor Hall ha sido activado
 
 // SENSOR DE OBSTRUCCION
 const int IRBtn = 9;
-int isIRledsActive = 0;  // Variable para indicar si los LEDs están encendidos debido al sensor de obstrucción
-int IRBtnEstado = HIGH;  // Estado del sensor de obstrucción
+int IRBtnEstado = LOW;  // Estado del sensor de obstrucción
 
 // LEDS
 #define PIN 7         // definiendo el puerto de los pines
@@ -47,7 +46,10 @@ unsigned long startTimer = 0;           // Variable para guardar el inicio del t
 unsigned long tiempoSegundos = 0;       // Variable para guardar el tiempo transcurrido en segundos
 unsigned long tiempoSegundosGanar = 0;  // Variable para guardar la diferencia de tiempo
 
-const int audioTime = 900;
+const int audioUno = 900;    // 15 minutos = 900 segundos
+const int audioDos = 2700;   // 15 minutos = 900 segundos
+const int audioTres = 3600;  // 15 minutos = 900 segundos
+
 // Funciones
 // ---------------------------------------------------
 
@@ -65,13 +67,14 @@ void setup() {
   pinMode(DoorSensorPin, INPUT);
   digitalWrite(LedStartGame, HIGH);
 
+  currentEstadoSensorHall = digitalRead(HallSensorPin);
+
   pixels.begin();
 }
 
 // Función principal en bucle
 void loop() {
-  checkButton();
-  checkIRSensor();
+  initGame();
   updateTimer();
   checkHallSensor();
   checkMasterKey();
@@ -79,36 +82,20 @@ void loop() {
 }
 
 // Función para verificar el estado del botón de inicio
-void checkButton() {
+void initGame() {
   int currentBtnEstado = digitalRead(btnTimer);
   if (currentBtnEstado != BtnEstado) {
     delay(50);
     if (currentBtnEstado == LOW && isGameInit == 0) {
-      Serial.println("El juego ha iniciado (intro con primera pista)");
+      Serial.println("El juego ha iniciado (audio introductorio)");
       resetGame();
       isGameInit = 1;
       digitalWrite(LedStartGame, LOW);
       delay(100);
-      audioShow(1);
+      audioShow(3);
       audioShow(6);
     }
     BtnEstado = currentBtnEstado;
-  }
-}
-
-// Función para verificar el estado del sensor de obstrucción
-void checkIRSensor() {
-  if (isIRledsActive == 0 && isHallSensorActive == 1) {
-    int currentIRBtnEstado = digitalRead(IRBtn);
-    if (currentIRBtnEstado != IRBtnEstado) {
-      delay(50);
-      if (currentIRBtnEstado == LOW && isIRledsActive == 0 && isGameInit == 1) {
-        Serial.println("Encendiendo luces led");
-        isIRledsActive = 1;
-        lucesLed(1);
-      }
-      IRBtnEstado = currentIRBtnEstado;
-    }
   }
 }
 
@@ -120,20 +107,20 @@ void updateTimer() {
       startTimer = currentMillis;
       tiempoSegundos++;
     }
-
     // tiempo necesario para escuchar la primera pista
-    if (tiempoSegundos == audioTime) {
-      Serial.println("segunda pista");
-      audioShow(2);
-      audioShow(6);
-      // tiempo necesario para escuchar la segunda pista
-    } else if (tiempoSegundos == audioTime * 3) {
-      Serial.println("cuarta pista");
-      audioShow(3);
-      audioShow(6);
-    } else if (tiempoSegundos == audioTime * 4) {
-      Serial.println("El juego ha finalizado: has perdido");
+    if (tiempoSegundos == audioUno) {
+      Serial.println("Primera pista");
       audioShow(4);
+      audioShow(6);
+    // tiempo necesario para escuchar la segunda pista
+    } else if (tiempoSegundos == audioDos) {
+      Serial.println("Segunda pista");
+      audioShow(5);
+      audioShow(6);
+    // tiempo necesario para escuchar el audio de derrota
+    } else if (tiempoSegundos == audioTres) {
+      Serial.println("El juego ha finalizado: has perdido");
+      audioShow(1);
       resetGame();
     }
   }
@@ -141,18 +128,12 @@ void updateTimer() {
 
 // Función para verificar el estado del sensor Hall
 void checkHallSensor() {
-  if (isHallSensorActive == 0) {
-    int currentEstadoSensorHall = digitalRead(HallSensorPin);
-    if (currentEstadoSensorHall != EstadoSensorHall) {
-      delay(50);
-      if (currentEstadoSensorHall == LOW && isGameInit == 1 && isHallSensorActive == 0) {
-        isHallSensorActive = 1;
-        tiempoSegundosGanar = tiempoSegundos + 10;
-        isGameFinish = 1;
-        Serial.println("El escarabajo ha sido activado");
-      }
-      EstadoSensorHall = currentEstadoSensorHall;
-    }
+  currentEstadoSensorHall = digitalRead(HallSensorPin);
+  if (currentEstadoSensorHall != EstadoSensorHall && isGameInit == 1) {
+    delay(50);
+    lucesLed(1);
+    Serial.println("El escarabajo ha sido colocado");
+    EstadoSensorHall = currentEstadoSensorHall;
   }
 }
 
@@ -192,7 +173,7 @@ void checkFinishDoorOpened() {
 
 void winner() {
   Serial.println("El juego ha finalizado: has ganado");
-  audioShow(5);
+  audioShow(2);
   resetGame();
 }
 
@@ -218,9 +199,7 @@ void resetGame() {
   tiempoSegundosGanar = 0;
   llaveSwitch = 0;
   BtnEstado = HIGH;
-  IRBtnEstado = HIGH;
-  isIRledsActive = 0;
-  isGameFinish = 0;
+  IRBtnEstado = LOW;
   isGameInit = 0;
   isHallSensorActive = 0;
   isDoorOpenedActive = 0;
@@ -243,13 +222,38 @@ void decodeBytes(const uint8_t* addr, uint8_t count) {
   }
 }
 
+/*
+Tiempos de espera por cada audio
+  intro: 31s 
+  primer audio: 15s
+  segundo audio: 25s
+  derrota: 45s
+  victoria: 26s
+*/
 // Función para reproducir un audio
 void audioShow(int current) {
   Serial.println("Reproduciendo audio: " + String(current));
   delay(50);
   myDFPlayer.pause();
   myDFPlayer.play(current);
-  if (current != 8) {
-    delay(5000);
+  switch (current) {
+    case 3 : // audio intro
+      delay(31000);
+      break;
+    case 4: // audio 2do
+      delay(15000);
+      break;
+    case 5: // audio 3ro
+      delay(25000);
+      break;
+    case 1: // audio de derrota
+      delay(45000);
+      break;
+    case 2: // audio de victoria
+      delay(26000);
+      break;
+    default: // otros audios
+      delay(5000);
+      break;
   }
 }
