@@ -3,6 +3,16 @@
 #include "DFRobotDFPlayerMini.h"
 #include <OneWire.h>
 
+// Conexiones
+// ---------------------------------------------------
+// Boton Inicio de juego (pto: 2)
+// Boton de reinicio de juego (pto: 4)
+// Led Inicio de juego (pto: 6)
+// Tira de luces led (pto: 7)
+// Detector de iman (pto: 8)
+// Reproducto de audio (ptos: 10 y 11)
+// Puerta del sensor de la puerta final (pto: 12)
+
 // Constantes y variables
 // ---------------------------------------------------
 
@@ -21,10 +31,6 @@ const int HallSensorPin = 8;
 volatile int EstadoSensorHall = HIGH;  // Estado del sensor Hall
 int currentEstadoSensorHall = 0;       // Estado actual del sensor
 int isHallSensorActive = 0;            // Variable para indicar si el sensor Hall ha sido activado
-
-// SENSOR DE OBSTRUCCION
-const int IRBtn = 9;
-int IRBtnEstado = LOW;  // Estado del sensor de obstrucción
 
 // LEDS
 #define PIN 7         // definiendo el puerto de los pines
@@ -46,9 +52,9 @@ unsigned long startTimer = 0;           // Variable para guardar el inicio del t
 unsigned long tiempoSegundos = 0;       // Variable para guardar el tiempo transcurrido en segundos
 unsigned long tiempoSegundosGanar = 0;  // Variable para guardar la diferencia de tiempo
 
-const int audioUno = 900;    // 15 minutos = 900 segundos
-const int audioDos = 2700;   // 15 minutos = 900 segundos
-const int audioTres = 3600;  // 15 minutos = 900 segundos
+const int audioUno = 1200;   // 20 minutos = 1200 segundos
+const int audioDos = 2400;   // 40 minutos = 2400 segundos
+const int audioTres = 3600;  // 60 minutos = 3600 segundos
 
 // Funciones
 // ---------------------------------------------------
@@ -63,11 +69,8 @@ void setup() {
   pinMode(btnTimer, INPUT_PULLUP);
   pinMode(LedStartGame, OUTPUT);
   pinMode(HallSensorPin, INPUT);
-  pinMode(IRBtn, INPUT);
-  pinMode(DoorSensorPin, INPUT);
+  pinMode(DoorSensorPin, INPUT_PULLUP);
   digitalWrite(LedStartGame, HIGH);
-
-  currentEstadoSensorHall = digitalRead(HallSensorPin);
 
   pixels.begin();
 }
@@ -90,6 +93,7 @@ void initGame() {
       Serial.println("El juego ha iniciado (audio introductorio)");
       resetGame();
       isGameInit = 1;
+      EstadoSensorHall = digitalRead(HallSensorPin);
       digitalWrite(LedStartGame, LOW);
       delay(100);
       audioShow(3);
@@ -112,12 +116,12 @@ void updateTimer() {
       Serial.println("Primera pista");
       audioShow(4);
       audioShow(6);
-    // tiempo necesario para escuchar la segunda pista
+      // tiempo necesario para escuchar la segunda pista
     } else if (tiempoSegundos == audioDos) {
       Serial.println("Segunda pista");
       audioShow(5);
-      audioShow(6);
-    // tiempo necesario para escuchar el audio de derrota
+      audioShow(7);
+      // tiempo necesario para escuchar el audio de derrota
     } else if (tiempoSegundos == audioTres) {
       Serial.println("El juego ha finalizado: has perdido");
       audioShow(1);
@@ -128,12 +132,14 @@ void updateTimer() {
 
 // Función para verificar el estado del sensor Hall
 void checkHallSensor() {
-  currentEstadoSensorHall = digitalRead(HallSensorPin);
-  if (currentEstadoSensorHall != EstadoSensorHall && isGameInit == 1) {
-    delay(50);
-    lucesLed(1);
-    Serial.println("El escarabajo ha sido colocado");
-    EstadoSensorHall = currentEstadoSensorHall;
+  if (isGameInit == 1) {
+    currentEstadoSensorHall = digitalRead(HallSensorPin);
+    if (currentEstadoSensorHall != EstadoSensorHall) {
+      delay(50);
+      lucesLed(1);
+      Serial.println("El escarabajo ha sido colocado");
+      EstadoSensorHall = currentEstadoSensorHall;
+    }
   }
 }
 
@@ -158,15 +164,13 @@ void checkMasterKey() {
 
 // Función para verificar si la puerta final fue abierta
 void checkFinishDoorOpened() {
-  if (isDoorOpenedActive == 0) {
+  if (isGameInit == 1) {
     int currentEstadoSensorDoor = digitalRead(DoorSensorPin);
-    if (currentEstadoSensorDoor != DoorSensorPin) {
+    if (currentEstadoSensorDoor == 1 && isDoorOpenedActive == 0) {
       delay(50);
-      if (currentEstadoSensorDoor == LOW && isGameInit == 1) {
-        Serial.println("La puerta final ha sido abierta");
-        isDoorOpenedActive = 1;
-        winner();
-      }
+      Serial.println("La puerta final ha sido abierta");
+      isDoorOpenedActive = 1;
+      winner();
     }
   }
 }
@@ -199,7 +203,6 @@ void resetGame() {
   tiempoSegundosGanar = 0;
   llaveSwitch = 0;
   BtnEstado = HIGH;
-  IRBtnEstado = LOW;
   isGameInit = 0;
   isHallSensorActive = 0;
   isDoorOpenedActive = 0;
@@ -222,14 +225,6 @@ void decodeBytes(const uint8_t* addr, uint8_t count) {
   }
 }
 
-/*
-Tiempos de espera por cada audio
-  intro: 31s 
-  primer audio: 15s
-  segundo audio: 25s
-  derrota: 45s
-  victoria: 26s
-*/
 // Función para reproducir un audio
 void audioShow(int current) {
   Serial.println("Reproduciendo audio: " + String(current));
@@ -237,22 +232,22 @@ void audioShow(int current) {
   myDFPlayer.pause();
   myDFPlayer.play(current);
   switch (current) {
-    case 3 : // audio intro
+    case 3:  // audio intro
       delay(31000);
       break;
-    case 4: // audio 2do
+    case 4:  // audio 2do
       delay(15000);
       break;
-    case 5: // audio 3ro
+    case 5:  // audio 3ro
       delay(25000);
       break;
-    case 1: // audio de derrota
+    case 1:  // audio de derrota
       delay(45000);
       break;
-    case 2: // audio de victoria
+    case 2:  // audio de victoria
       delay(26000);
       break;
-    default: // otros audios
+    default:  // otros audios
       delay(5000);
       break;
   }
